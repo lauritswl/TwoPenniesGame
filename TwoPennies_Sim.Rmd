@@ -18,44 +18,65 @@ set.seed(20)   # Ensure reproducibility
 ```{r}
 # Define Softmax function
 softmax_function <- function(x, tau=1) {
+  #' @param tau is a temperature. [0.00001, inf]. As tau approximates 0, the model will always pick the highest prob choice
+  #' @param x is a vector input containing an abitrary value for each choice, defined by rl-algorithm.
+  #' @returns a list of probabilities summing to 1.
   exp_x <- exp((x - max(x)) / tau)  # Subtract max(x) for numerical stability
   return(exp_x / sum(exp_x))
 }
-# Define Reinforcement Learning Agent
-update_rl_values <- function(value, alpha, choice, feedback) {
-  v1 <- value[1] + alpha * (1 - choice) * (feedback - value[1])
-  v2 <- value[2] + alpha * (choice) * (feedback - value[2])
-  return(c(v1, v2))
-}
 
-rl_agent <- function(value, alpha, tau, gamma = 1) {
+# Define Reinforcement Learning Agent
+agent_rl <- function(RL_value, alpha, tau, gamma = 1) {
+  #' @param value; 
   # Exploration - Turned off by default
   if(gamma < runif(1)){
     choice <- rbinom(1, 1, 0.5)
     return(choice)
     }
   # If sticking to rules
-  probs <- softmax_function(value, tau)
+  probs <- softmax_function(value, tau) # Using reinforcement values and temprature to get probabilities.
   choice <- rbinom(1, 1, probs)
   return(choice)
 }
 
+update_rl_values <- function(RL_value, alpha, choice, feedback) {
+  #' @param RL_value is a vector of two RL_values. As they approach 1, they are updated slower.
+  #' @param alpha is the learning rate. Defining how quickly we update RL_value
+  #' @param choice is the chosen state of the RL_agent this turn. It is used as a mathemathical if-statement.
+  #' @param feedback is the output of the game. Was the correct hand guessed this round?
+  #' 
+  
+  
+  # These (1-choice) is set so the model optimizes feedback == 0. Swap the choice parentheses if you want to optimize for feedback == 1, ie if the RL_model is the guesser.
+  v1 <- RL_value[1] + alpha * (1 - choice) * (feedback - RL_value[1])
+  v2 <- RL_value[2] + alpha * (choice) * (feedback - RL_value[2])
+  RL_value <- c(v1, v2)
+  return(RL_value)
+}
+
 # Define Memory Agent
-inverse_logit <- function(x) {
-  return(1 / (1 + exp(-x)))
-}
-
-logit_transform <- function(x) {
-  return(log(x / (1 - x)))
-}
-
-memory_agent <- function(bias, beta, cumulativerate, gamma = 1) {
-    # Exploration - Turned off by default
+agent_memory <- function(cumulativerate, gamma = 1) {
+  #' The memory agent uses the cumulativerate to predict the hand hiding the coin.
+  #' @param cumulativerate is a rate between [0,1] being updated by update_memory_cumulativerate()
+  #' @param gamma is a exploration parameter, defining how often the model picks a random choice.
+   
+  # Exploration - Turned off by default
   if(gamma < runif(1)){
     choice <- rbinom(1, 1, 0.5)
-    return(choice)
-    }
-  return(rbinom(1, 1, inverse_logit(bias - beta * logit_transform(cumulativerate))))
+    return(choice)}
+  
+  # No Exploration, using informed memory parameter to predict
+  return(rbinom(1, 1, cumulativerate))
+}
+
+# Define Reinforcement Learning Agent
+update_memory_cumulativerate <- function(cumulativerate, choice, beta) {
+  #' This models update the cumulativerate when new information is seen.
+  #' @param cumulativerate is the models choice probability, that we want to update. This is returned.
+  #' @param choice is the opponents last choice, that we want to use to update the memory
+  #' @param beta is the remembering parameter. The higher beta is the more wieght we assign to prior memory.
+  cumulativerate <- cumulativerate * beta + choice * (1-beta) # Update
+  return(cumulativerate)
 }
 ```
 
@@ -68,25 +89,30 @@ d_combined <- tibble()
 # Parameters and initiation values
 value <- c(0.3, 0.8)  # Reset RL values
 bias <- 0             # Memory bias
-tau <- 0.2          # Fixed tau value
+tau <- 0.5            # Fixed tau value
 gamma <- 0.95         # Exploration of RL agent
 
 # Parameters for the Loop
-parameter_values_alpha <- c(0.05, 0.2, 0.4)  # Learning rate values to iterate over
-parameter_values_beta <- c(0.1, 0.4, 0.6)
+parameter_values_alpha <- c(0.05, 0.3, 0.6)  # Learning rate values to iterate over
+parameter_values_beta <- c(0.1, 0.4, 0.6)    
 
 for (alpha in parameter_values_alpha) {
   for (beta in parameter_values_beta) {
-    value <- c(0.3, 0.8)  # Reset RL values
+    RL_value <- c(0.5, 0.5)  # Reset RL values
     cumulativerate <- 0.5 # Reset memory rate
     df_temp <- tibble(trial = 1:trials, rl_choice = NA, mem_choice = NA, feedback = NA, alpha = alpha, beta = beta)
 
     for (i in 1:trials) {
-      df_temp$rl_choice[i] <- rl_agent(value, alpha, tau, gamma)  #rbinom(n = 1, size = 1, prob = 0.90)
-      df_temp$mem_choice[i] <- memory_agent(bias, beta, cumulativerate, gamma)
+      # Both models makes a choice
+      df_temp$rl_choice[i] <- agent_rl(RL_value, alpha, tau, gamma)  #rbinom(n = 1, size = 1, prob = 0.90)
+      df_temp$mem_choice[i] <- agent_memory(cumulativerate, gamma)
+      
+      # Did the guessing model guess correctly?
       df_temp$feedback[i] <- ifelse(df_temp$rl_choice[i] == df_temp$mem_choice[i], yes = 1, no = 0)  # Random outcome
-      value <- update_rl_values(value, alpha, df_temp$rl_choice[i], df_temp$feedback[i])
-      cumulativerate <- cumulativerate * 0.9 + df_temp$rl_choice[i] * 0.1  # Update memory agent
+      
+      # Update the memory/bias of the two models (one needs to be )
+      RL_value <- update_rl_values(RL_value, alpha, df_temp$rl_choice[i], df_temp$feedback[i])
+      cumulativerate <- update_memory_cumulativerate(cumulativerate, choice = df_temp$rl_choice[i], beta)
     }
     
     df_temp <- df_temp %>% mutate(cumulative_feedback = cumsum(feedback) / trial)
@@ -103,8 +129,17 @@ d_combined <- d_combined %>% mutate(condition = paste0("alpha=", alpha, ", beta=
 # Plot Results
 ggplot(d_combined, aes(trial, cumulative_feedback, color = condition, group = condition)) +
   geom_line() +
-  labs(title = "Agent Behavior Under Different Conditions", x = "Trial Number", y = "Cumulative Probability of Memory Agent winning", color = "Condition (tau/beta)") +
+  labs(title = "Agent Behavior Under Different Conditions", x = "Trial Number", y = "Cumulative Probability of Memory Agent winning", color = "Condition (alpha/beta)") +
   ylim(0, 1) +
+  theme_classic()
+
+```
+```{r}
+ggplot(d_combined, aes(trial, cumulative_feedback, color = as.factor(beta), group = condition)) +
+  geom_line() +
+  labs(title = "Effect of Alpha and Beta on Agent Performance ~ facet_wrap of alpha values:", x = "Trial", y = "Cumulative Probability of Memory Agent Winning", color = "Beta") +
+  ylim(0, 1) +
+  facet_wrap(~alpha) +
   theme_classic()
 
 ```
