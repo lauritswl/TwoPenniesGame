@@ -1,0 +1,112 @@
+---
+title: "Matching Pennies strategy"
+author: "Laurits Lyngbaek"
+date: "2025-02-16"
+output: html_document
+---
+# Setup
+```{r}
+# Load required packages
+pacman::p_load(tidyverse, patchwork)
+
+# Set parameters
+trials <- 100   # Number of trials
+set.seed(20)   # Ensure reproducibility
+```
+
+# Functions
+```{r}
+# Define Softmax function
+softmax_function <- function(x, tau=1) {
+  exp_x <- exp((x - max(x)) / tau)  # Subtract max(x) for numerical stability
+  return(exp_x / sum(exp_x))
+}
+# Define Reinforcement Learning Agent
+update_rl_values <- function(value, alpha, choice, feedback) {
+  v1 <- value[1] + alpha * (1 - choice) * (feedback - value[1])
+  v2 <- value[2] + alpha * (choice) * (feedback - value[2])
+  return(c(v1, v2))
+}
+
+rl_agent <- function(value, alpha, tau, gamma = 1) {
+  # Exploration - Turned off by default
+  if(gamma < runif(1)){
+    choice <- rbinom(1, 1, 0.5)
+    return(choice)
+    }
+  # If sticking to rules
+  probs <- softmax_function(value, tau)
+  choice <- rbinom(1, 1, probs)
+  return(choice)
+}
+
+# Define Memory Agent
+inverse_logit <- function(x) {
+  return(1 / (1 + exp(-x)))
+}
+
+logit_transform <- function(x) {
+  return(log(x / (1 - x)))
+}
+
+memory_agent <- function(bias, beta, cumulativerate, gamma = 1) {
+    # Exploration - Turned off by default
+  if(gamma < runif(1)){
+    choice <- rbinom(1, 1, 0.5)
+    return(choice)
+    }
+  return(rbinom(1, 1, inverse_logit(bias - beta * logit_transform(cumulativerate))))
+}
+```
+
+
+# Simulation
+```{r}
+# Initialize Data Storage
+d_combined <- tibble()
+
+# Parameters and initiation values
+value <- c(0.3, 0.8)  # Reset RL values
+bias <- 0             # Memory bias
+tau <- 0.2          # Fixed tau value
+gamma <- 0.95         # Exploration of RL agent
+
+# Parameters for the Loop
+parameter_values_alpha <- c(0.05, 0.2, 0.4)  # Learning rate values to iterate over
+parameter_values_beta <- c(0.1, 0.4, 0.6)
+
+for (alpha in parameter_values_alpha) {
+  for (beta in parameter_values_beta) {
+    value <- c(0.3, 0.8)  # Reset RL values
+    cumulativerate <- 0.5 # Reset memory rate
+    df_temp <- tibble(trial = 1:trials, rl_choice = NA, mem_choice = NA, feedback = NA, alpha = alpha, beta = beta)
+
+    for (i in 1:trials) {
+      df_temp$rl_choice[i] <- rl_agent(value, alpha, tau, gamma)  #rbinom(n = 1, size = 1, prob = 0.90)
+      df_temp$mem_choice[i] <- memory_agent(bias, beta, cumulativerate, gamma)
+      df_temp$feedback[i] <- ifelse(df_temp$rl_choice[i] == df_temp$mem_choice[i], yes = 1, no = 0)  # Random outcome
+      value <- update_rl_values(value, alpha, df_temp$rl_choice[i], df_temp$feedback[i])
+      cumulativerate <- cumulativerate * 0.9 + df_temp$rl_choice[i] * 0.1  # Update memory agent
+    }
+    
+    df_temp <- df_temp %>% mutate(cumulative_feedback = cumsum(feedback) / trial)
+    d_combined <- bind_rows(d_combined, df_temp)
+  }
+}
+
+d_combined <- d_combined %>% mutate(condition = paste0("alpha=", alpha, ", beta=", beta))
+
+```
+
+# Plots
+```{r}
+# Plot Results
+ggplot(d_combined, aes(trial, cumulative_feedback, color = condition, group = condition)) +
+  geom_line() +
+  labs(title = "Agent Behavior Under Different Conditions", x = "Trial Number", y = "Cumulative Probability of Memory Agent winning", color = "Condition (tau/beta)") +
+  ylim(0, 1) +
+  theme_classic()
+
+```
+
+
