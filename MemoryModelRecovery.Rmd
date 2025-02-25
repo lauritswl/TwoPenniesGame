@@ -1,0 +1,89 @@
+
+
+# Test 1: Make the model fight the biased agent:
+## Define Memory Agent:
+```{r}
+# Define Memory Agent
+agent_memory <- function(cumulativerate, gamma = 1) {
+  #' The memory agent uses the cumulativerate to predict the hand hiding the coin.
+  #' @param cumulativerate is a rate between [0,1] being updated by update_memory_cumulativerate()
+  #' @param gamma is a exploration parameter, defining how often the model picks a random choice.
+   
+  # Exploration - Turned off by default
+  if(gamma < runif(1)){
+    choice <- rbinom(1, 1, 0.5)
+    return(choice)}
+  
+  # No Exploration, using informed memory parameter to predict
+  return(rbinom(1, 1, cumulativerate))
+}
+
+update_memory_cumulativerate <- function(cumulativerate, choice, beta) {
+  #' This models update the cumulativerate when new information is seen.
+  #' @param cumulativerate is the models choice probability, that we want to update. This is returned.
+  #' @param choice is the opponents last choice, that we want to use to update the memory
+  #' @param beta is the remembering parameter. The higher beta is the more wieght we assign to prior memory.
+  cumulativerate <- cumulativerate * beta + choice * (1-beta) # Update
+  return(cumulativerate)
+}
+```
+
+
+## Simulate
+```{r}
+# Define parameters
+trials <- 150
+theta <- 6/7          # Fixed agents bias
+beta <- 0.8       # Memory reliance variable (High == reliance on memory)
+gamma <- 0.95         # Exploration of Memory agent
+cumulativerate <- 0.5 # Reset memory rate
+
+# Initialize Data Storage
+memory_data <- tibble(trial = 1:trials, biased_choice = NA, mem_choice = NA, feedback = NA,cumulativerate = NA, gamma = gamma, theta = theta, beta = beta)
+
+for (i in 1:trials) {
+  # Both models makes a choice:
+  memory_data$biased_choice[i] <- rbinom(n = 1, size = 1, prob = theta)
+  memory_data$mem_choice[i] <- agent_memory(cumulativerate, gamma)
+      
+  # Did the guessing model guess correctly?
+  memory_data$feedback[i] <- ifelse(memory_data$biased_choice[i] == memory_data$mem_choice[i], yes = 1, no = 0)  # Random outcome
+      
+   # Update the memory of the model
+  memory_data$cumulativerate[i] <- cumulativerate
+   cumulativerate <- update_memory_cumulativerate(cumulativerate, choice = memory_data$biased_choice[i], beta)
+}
+memory_data <- memory_data %>% 
+  mutate(cumulative_feedback = cumsum(feedback) / trial)
+
+# Plot Results
+ggplot(memory_data, aes(trial, cumulative_feedback)) +
+  geom_line() +
+  labs(title = "Agent Behavior Under Different Conditions", x = "Trial Number", y = "Cumulative Probability of Memory Agent winning", color = "Condition (alpha/beta)") +
+  ylim(0, 1) +
+  theme_classic()
+```
+
+```{r}
+## Specify where the model is
+file <- file.path("stan/MemoryModel.stan")
+mod <- cmdstan_model(file, cpp_options = list(stan_threads = TRUE),
+                     stanc_options = list("O1"))
+
+# The following command calls Stan with specific options.
+samples <- mod$sample(
+  data = data,
+  seed = 123,
+  chains = 2,
+  parallel_chains = 2,
+  threads_per_chain = 2,
+  iter_warmup = 1000,
+  iter_sampling = 2000,
+  refresh = 0,
+  max_treedepth = 20,
+  adapt_delta = 0.99,
+)
+```
+
+
+

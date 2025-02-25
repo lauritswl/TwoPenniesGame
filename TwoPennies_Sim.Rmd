@@ -69,7 +69,6 @@ agent_memory <- function(cumulativerate, gamma = 1) {
   return(rbinom(1, 1, cumulativerate))
 }
 
-# Define Reinforcement Learning Agent
 update_memory_cumulativerate <- function(cumulativerate, choice, beta) {
   #' This models update the cumulativerate when new information is seen.
   #' @param cumulativerate is the models choice probability, that we want to update. This is returned.
