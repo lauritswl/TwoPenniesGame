@@ -1,4 +1,8 @@
+## Install Packages:
+```{r}
+pacman::p_load(tidyverse, cmdstanr)
 
+```
 
 # Test 1: Make the model fight the biased agent:
 ## Define Memory Agent:
@@ -65,6 +69,14 @@ ggplot(memory_data, aes(trial, cumulative_feedback)) +
 ```
 
 ```{r}
+## Convert tibble to named list
+stan_data <- list(
+  n = nrow(memory_data),  # Number of trials
+  other = memory_data$biased_choice, # Did the opponent chooce left or right
+  mm_choice = memory_data$mem_choice, # Did the memory model choose left or right
+  feedback = memory_data$feedback # Did the memory model choose correctly
+)
+
 ## Specify where the model is
 file <- file.path("stan/MemoryModel.stan")
 mod <- cmdstan_model(file, cpp_options = list(stan_threads = TRUE),
@@ -72,7 +84,7 @@ mod <- cmdstan_model(file, cpp_options = list(stan_threads = TRUE),
 
 # The following command calls Stan with specific options.
 samples <- mod$sample(
-  data = data,
+  data = stan_data,
   seed = 123,
   chains = 2,
   parallel_chains = 2,
@@ -83,6 +95,9 @@ samples <- mod$sample(
   max_treedepth = 20,
   adapt_delta = 0.99,
 )
+
+samples$summary()
+
 ```
 
 
