@@ -6,14 +6,11 @@ data{
 
 parameters{
   real<lower=0, upper=1> beta;   // Memory updating parameter - likelihood to overfit/underfit
-  // real<lower=0, upper=1> gamma;     // Exploration parameter
-  real<lower=0, upper=1> init_rate; // Initial cumulative rate
-  
 }
 
 transformed parameters{
   vector[n] cumrate; // 
-  cumrate[1] = init_rate; // set cumulativerate to 0.5
+  cumrate[1] = 0.5; // set cumulativerate to 0.5
   for (trial in 2:n){ // Update cumrate
     cumrate[trial] = beta * cumrate[trial-1] + (1 - beta) * other[trial-1]; // Update cumulativerate with information form last trial
   }
@@ -23,9 +20,6 @@ transformed parameters{
 model{
  // Priors
  target += beta_lpdf(beta | 2, 2);  // Equivalent to beta ~ beta(2,2), a non-informed prior
- target += beta_lpdf(init_rate | 2, 2); 
- 
- // target += beta_lpdf(gamma | 2, 2)
  // Likelihood
  target += bernoulli_lpmf(mm_choice | cumrate); 
 }
