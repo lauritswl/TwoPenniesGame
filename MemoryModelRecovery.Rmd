@@ -73,8 +73,7 @@ ggplot(memory_data, aes(trial, cumulative_feedback)) +
 stan_data <- list(
   n = nrow(memory_data),  # Number of trials
   other = memory_data$biased_choice, # Did the opponent chooce left or right
-  mm_choice = memory_data$mem_choice, # Did the memory model choose left or right
-  feedback = memory_data$feedback # Did the memory model choose correctly
+  mm_choice = memory_data$mem_choice # Did the memory model choose left or right
 )
 
 ## Specify where the model is

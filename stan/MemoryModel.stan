@@ -2,7 +2,6 @@ data{
   int<lower=1> n;
   array[n] int mm_choice; // Did the memory model choose left or right
   array[n] int other; // Did the opponent choose left or right
-  array[n] int feedback; // Binary Feedback - is mm_choice == other
 }
 
 parameters{
@@ -29,6 +28,5 @@ model{
  // target += beta_lpdf(gamma | 2, 2)
  // Likelihood
  target += bernoulli_lpmf(mm_choice | cumrate); 
- 
 }
 
