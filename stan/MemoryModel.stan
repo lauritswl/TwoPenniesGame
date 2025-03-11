@@ -24,3 +24,9 @@ model{
  target += bernoulli_lpmf(mm_choice | cumrate); 
 }
 
+
+generated quantities{
+  real<lower=0, upper=1> beta_prior; // Define in scope
+  beta_prior = beta_rng(2, 2);
+}
+

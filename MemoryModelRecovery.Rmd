@@ -1,7 +1,6 @@
 ## Install Packages:
 ```{r}
-pacman::p_load(tidyverse, cmdstanr)
-
+pacman::p_load(tidyverse, tidybayes, cmdstanr)
 ```
 
 # Test 1: Make the model fight the biased agent:
@@ -38,12 +37,12 @@ update_memory_cumulativerate <- function(cumulativerate, choice, beta) {
 # Define parameters
 trials <- 150
 theta <- 6/7          # Fixed agents bias
-beta <- 0.8       # Memory reliance variable (High == reliance on memory)
+true_beta <- 0.8       # Memory reliance variable (High == reliance on memory)
 gamma <- 0.95         # Exploration of Memory agent
-cumulativerate <- 0.5 # Reset memory rate
+cumulativerate <- 0.3 # Reset memory rate
 
 # Initialize Data Storage
-memory_data <- tibble(trial = 1:trials, biased_choice = NA, mem_choice = NA, feedback = NA,cumulativerate = NA, gamma = gamma, theta = theta, beta = beta)
+memory_data <- tibble(trial = 1:trials, biased_choice = NA, mem_choice = NA, feedback = NA,cumulativerate = NA, gamma = gamma, theta = theta, beta = true_beta)
 
 for (i in 1:trials) {
   # Both models makes a choice:
@@ -55,7 +54,7 @@ for (i in 1:trials) {
       
    # Update the memory of the model
   memory_data$cumulativerate[i] <- cumulativerate
-   cumulativerate <- update_memory_cumulativerate(cumulativerate, choice = memory_data$biased_choice[i], beta)
+   cumulativerate <- update_memory_cumulativerate(cumulativerate, choice = memory_data$biased_choice[i], true_beta)
 }
 memory_data <- memory_data %>% 
   mutate(cumulative_feedback = cumsum(feedback) / trial)
@@ -84,7 +83,7 @@ mod <- cmdstan_model(file, cpp_options = list(stan_threads = TRUE),
 # The following command calls Stan with specific options.
 samples <- mod$sample(
   data = stan_data,
-  seed = 123,
+  seed = 1234,
   chains = 2,
   parallel_chains = 2,
   threads_per_chain = 2,
@@ -97,6 +96,18 @@ samples <- mod$sample(
 
 samples$summary()
 
+```
+
+```{r}
+draws_df <- as_draws_df(samples$draws())
+# Now let's plot the density for bias (prior and posterior)
+ggplot(draws_df) +
+  geom_density(aes(beta), fill = "blue", alpha = 0.3) +
+  geom_density(aes(beta_prior), fill = "red", alpha = 0.3) +
+  geom_vline(xintercept = true_beta, size = 2) +
+  xlab("Beta") +
+  ylab("Posterior Density") +
+  theme_classic()
 ```
 
 
