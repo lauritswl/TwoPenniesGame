@@ -1,6 +1,6 @@
 ## Install Packages:
 ```{r}
-pacman::p_load(tidyverse, tidybayes, cmdstanr)
+pacman::p_load(tidyverse, tidybayes, cmdstanr, posterior)
 ```
 
 # Test 1: Make the model fight the biased agent:
@@ -99,7 +99,9 @@ samples$summary()
 ```
 
 ```{r}
-draws_df <- as_draws_df(samples$draws())
+draws_df <- samples$draws() %>% 
+  as_draws_df()
+
 # Now let's plot the density for bias (prior and posterior)
 ggplot(draws_df) +
   geom_density(aes(beta), fill = "blue", alpha = 0.3) +
@@ -109,6 +111,53 @@ ggplot(draws_df) +
   ylab("Posterior Density") +
   theme_classic()
 ```
+```{r}
+summary_df <- samples$summary()
+summary_df <- summary_df[3:152,1:2] %>% 
+  mutate(trial = 1:150) %>% 
+  rename(theta=mean)
+```
 
 
+```{r}
+library(ggplot2)
+library(patchwork)
+
+# Create a data frame for the legend
+legend_df <- data.frame(
+  label = c("True Theta", "Mean Theta"),
+  value = c(theta, mean(summary_df$theta))
+)
+
+# Main line plot
+p1 <- ggplot(summary_df, aes(x = trial, y = theta)) +
+  geom_line(color = "#f0c8a3", size = 1) +  
+  geom_point(color = "black", size = 1.5) +  
+  theme_bw() +
+  ylim(0,1) +
+  geom_hline(data = legend_df, aes(yintercept = value, linetype = label, color = label), size = 1) +  # Shared legend
+  labs(x = "Trial", y = "Mean Cumrate", title = "Mean of Posterior Draws Over Trials", 
+       color = "Legend", linetype = "Legend") +
+  scale_linetype_manual(values = c("dashed", "dashed")) +
+  scale_color_manual(values = c("red", "black")) +
+  theme(legend.position = "bottom")
+
+# Density plot (right margin)
+p2 <- ggplot(summary_df, aes(x = theta)) +
+  geom_density(fill = "#f0c8a3", alpha = 0.5) +  
+  geom_vline(data = legend_df, aes(xintercept = value, linetype = label, color = label), size = 1) +  # Shared legend
+  theme_bw() +
+  xlim(0,1) +
+  coord_flip() +  
+  labs(y = "Density") +  # No duplicate legend labels
+  scale_linetype_manual(values = c("dashed", "dashed"), guide = "none") +  # Hide duplicate legend
+  scale_color_manual(values = c("red", "black"), guide = "none") +  # Hide duplicate legend
+  theme(axis.title.y = element_blank(), axis.text.y = element_blank(), axis.ticks.y = element_blank())
+
+# Combine both plots, keeping only one legend
+final_plot <- p1 + p2 + plot_layout(ncol = 2, widths = c(3, 1)) & theme(legend.position = "bottom")
+
+final_plot
+
+```
 
